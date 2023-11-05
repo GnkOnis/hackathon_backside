@@ -1,0 +1,11 @@
+create table maintable(
+     title varchar(256) NOT NULL primary key,
+     category int,
+     curr int,
+     link varchar(256),
+     createtime DATETIME,
+     updatetime DATETIME,
+     numcomment int,
+     summary varchar(2048),
+     name varchar(64)
+);
