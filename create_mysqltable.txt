@@ -1,5 +1,6 @@
 create table maintable(
-     title varchar(256) NOT NULL primary key,
+     id VARCHAR(26) NOT NULL primary key,
+     title varchar(256),
      category int,
      curr int,
      link varchar(256),

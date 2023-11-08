@@ -1,10 +1,12 @@
 package main
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/oklog/ulid"
 	_ "github.com/oklog/ulid"
 	"github.com/rs/cors"
 	_ "github.com/rs/cors"
@@ -16,6 +18,7 @@ import (
 )
 
 type SendJson struct {
+	Id         string `json:"id"`
 	Title      string `json:"title"`
 	Category   int    `json:"category"`
 	Curr       int    `json:"curr"`
@@ -101,7 +104,7 @@ func handler_table(w http.ResponseWriter, r *http.Request) {
 		items := []SendJson{}
 		for rows.Next() {
 			var item SendJson
-			err := rows.Scan(&item.Title, &item.Category, &item.Curr, &item.Link, &item.CreateTime, &item.UpdateTime, &item.Numcomment, &item.Summary, &item.Name)
+			err := rows.Scan(&item.Id, &item.Title, &item.Category, &item.Curr, &item.Link, &item.CreateTime, &item.UpdateTime, &item.Numcomment, &item.Summary, &item.Name)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -131,15 +134,32 @@ func handler_table(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		nowTime := time.Now()
-		query := "INSERT INTO maintable (title,category,curr,link,createtime,updatetime,numcomment,summary,name) VALUES(?,?,?,?,?,?,?,?,?)"
-		_, err = db.Exec(query, Recievejson.Title, Recievejson.Category, Recievejson.Curr, Recievejson.Link, nowTime, nowTime, 1, "まだsummaryは実装されていません", Recievejson.Name)
+
+		//ULIDを生成
+		ulid, err := ulid.New(ulid.Now(), nil)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		ulidStr := ulid.String()
+
+		query := "INSERT INTO maintable (id,title,category,curr,link,createtime,updatetime,numcomment,summary,name) VALUES(?,?,?,?,?,?,?,?,?,?)"
+		_, err = db.Exec(query, ulidStr, Recievejson.Title, Recievejson.Category, Recievejson.Curr, Recievejson.Link, nowTime, nowTime, 1, "まだsummaryは実装されていません", Recievejson.Name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		//ここでコメントとコメント主を保存するtableを新しくつくる
+		err = createCommentTableAndInsertData(db, ulidStr, Recievejson.Comment, Recievejson.Name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
 		w.WriteHeader(http.StatusCreated)
 	case http.MethodPut:
 		var Recievejson struct {
+			Id       string `json:"id"`
 			Title    string `json:"title"`
 			Category int    `json:"category"`
 			Curr     int    `json:"curr"`
@@ -151,49 +171,52 @@ func handler_table(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if Recievejson.Title != "nochange" {
+			_, err = db.Exec("UPDATE maintable SET title = ? WHERE id = ?", Recievejson.Title, Recievejson.Id)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		if Recievejson.Category != 100 {
-			_, err = db.Exec("UPDATE maintable SET category = ? WHERE title = ?", Recievejson.Category, Recievejson.Title)
+			_, err = db.Exec("UPDATE maintable SET category = ? WHERE id = ?", Recievejson.Category, Recievejson.Id)
 		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if Recievejson.Curr != 100 {
-			_, err = db.Exec("UPDATE maintable SET curr = ? WHERE title = ?", Recievejson.Curr, Recievejson.Title)
-		}
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			_, err = db.Exec("UPDATE maintable SET curr = ? WHERE id = ?", Recievejson.Curr, Recievejson.Id)
 		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if Recievejson.Link != "nochange" {
-			_, err = db.Exec("UPDATE maintable SET link = ? WHERE title = ?", Recievejson.Link, Recievejson.Title)
+			_, err = db.Exec("UPDATE maintable SET link = ? WHERE id = ?", Recievejson.Link, Recievejson.Id)
 		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if Recievejson.Name != "nochange" {
-			_, err = db.Exec("UPDATE maintable SET name = ? WHERE title = ?", Recievejson.Name, Recievejson.Title)
+			_, err = db.Exec("UPDATE maintable SET name = ? WHERE id = ?", Recievejson.Name, Recievejson.Id)
 		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		currentTime := time.Now()
-		_, err = db.Exec("UPDATE maintable SET updatetime = ? WHERE title = ?", currentTime, Recievejson.Title)
+		_, err = db.Exec("UPDATE maintable SET updatetime = ? WHERE id = ?", currentTime, Recievejson.Id)
 
 		w.WriteHeader(http.StatusNoContent)
 	case http.MethodDelete:
-		title := r.URL.Query().Get("title")
-		if title == "" {
+		id := r.URL.Query().Get("id")
+		if id == "" {
 			http.Error(w, "Title is required", http.StatusBadRequest)
 		}
-		query := "DELETE FROM maintable WHERE title = ?"
-		_, err := db.Exec(query, title)
+		query := "DELETE FROM maintable WHERE id = ?"
+		_, err := db.Exec(query, id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -201,11 +224,125 @@ func handler_table(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func createCommentTableAndInsertData(db *sql.DB, parentId, comment, name string) error {
+	// テーブル名を生成
+	tableName := parentId
+
+	// コメントテーブルを作成
+	createTableSQL := fmt.Sprintf("CREATE TABLE %s (id VARCHAR(26), name VARCHAR(64), comment VARCHAR(1024))", tableName)
+	_, err := db.Exec(createTableSQL)
+	if err != nil {
+		return err
+	}
+
+	// ulidを生成
+	ulid, err := ulid.New(ulid.Now(), nil)
+	if err != nil {
+		return err
+	}
+
+	// データを挿入
+	insertSQL := fmt.Sprintf("INSERT INTO %s (id, name, comment) VALUES (?, ?, ?)", tableName)
+	_, err = db.Exec(insertSQL, ulid.String(), name, comment)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func handler_element(w http.ResponseWriter, r *http.Request) {
+	parentId := r.URL.Query().Get("parent_id")
 	switch r.Method {
 	case http.MethodGet:
+		fmt.Println("enter get of element")
+
+		// テーブル名を生成
+		tableName := parentId
+
+		// データベースからデータを取得
+		rows, err := db.Query("SELECT id, name, comment FROM " + tableName)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		// 取得したデータを格納するスライス
+		var items []map[string]interface{}
+
+		for rows.Next() {
+			var id, name, comment string
+			if err := rows.Scan(&id, &name, &comment); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			// データをマップに追加
+			item := map[string]interface{}{
+				"id":      id,
+				"name":    name,
+				"comment": comment,
+			}
+			items = append(items, item)
+		}
+
+		// データをJSON形式で返す
+		responseJSON, err := json.Marshal(items)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(responseJSON)
 	case http.MethodPost:
+		// POSTリクエストの処理
+		var Recievejson struct {
+			Name    string `json:"name"`
+			Comment string `json:"comment"`
+		}
+		err := json.NewDecoder(r.Body).Decode(&Recievejson)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// ULIDを生成
+		ulid, err := ulid.New(ulid.Now(), rand.Reader)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// テーブル名を生成
+		tableName := parentId
+
+		// データベースにデータを挿入
+		_, err = db.Exec("INSERT INTO "+tableName+" (id, name, comment) VALUES (?, ?, ?)", ulid.String(), Recievejson.Name, Recievejson.Comment)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
 	case http.MethodDelete:
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			http.Error(w, "ID is required", http.StatusBadRequest)
+			return
+		}
+
+		// テーブル名を生成
+		tableName := parentId
+
+		// データベースから指定されたIDのカラムを削除
+		_, err := db.Exec("DELETE FROM "+tableName+" WHERE id = ?", id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
