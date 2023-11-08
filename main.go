@@ -13,6 +13,7 @@ import (
 	"log"
 	_ "math/rand"
 	"net/http"
+	"os"
 	"time"
 	_ "time"
 )
@@ -34,18 +35,18 @@ var db *sql.DB
 
 func init() {
 	//デプロイ用
-	//mysqlUser := os.Getenv("MYSQL_USER")
-	//mysqlPwd := os.Getenv("MYSQL_PWD")
-	//mysqlHost := os.Getenv("MYSQL_HOST")
-	//mysqlDatabase := os.Getenv("MYSQL_DATABASE")
-	//connStr := fmt.Sprintf("%s:%s@%s/%s", mysqlUser, mysqlPwd, mysqlHost, mysqlDatabase)
-	//_db, err := sql.Open("mysql", connStr)
+	mysqlUser := os.Getenv("MYSQL_USER")
+	mysqlPwd := os.Getenv("MYSQL_PWD")
+	mysqlHost := os.Getenv("MYSQL_HOST")
+	mysqlDatabase := os.Getenv("MYSQL_DATABASE")
+	connStr := fmt.Sprintf("%s:%s@%s/%s", mysqlUser, mysqlPwd, mysqlHost, mysqlDatabase)
+	_db, err := sql.Open("mysql", connStr)
 
 	//mysqlのコンテナに接続
-	sqluser := "test_user"
-	sqlpwd := "password"
-	sqldatabase := "test_database"
-	_db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@(localhost:3306)/%s", sqluser, sqlpwd, sqldatabase))
+	//sqluser := "test_user"
+	//sqlpwd := "password"
+	//sqldatabase := "test_database"
+	//_db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@(localhost:3306)/%s", sqluser, sqlpwd, sqldatabase))
 
 	if err != nil {
 		log.Fatalf("fail: sql.Open, %v\n", err)
