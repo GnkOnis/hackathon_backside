@@ -358,7 +358,7 @@ func main() {
 	})
 	handlerWithCors := c.Handler(http.DefaultServeMux)
 	log.Println("Listening...")
-	if err := http.ListenAndServe(":8000", handlerWithCors); err != nil {
+	if err := http.ListenAndServe(":8080", handlerWithCors); err != nil {
 		log.Fatal(err)
 	}
 }
