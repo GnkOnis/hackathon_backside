@@ -13,7 +13,6 @@ import (
 	"log"
 	_ "math/rand"
 	"net/http"
-	"os"
 	"time"
 	_ "time"
 )
@@ -35,18 +34,18 @@ var db *sql.DB
 
 func init() {
 	//デプロイ用
-	mysqlUser := os.Getenv("MYSQL_USER")
-	mysqlPwd := os.Getenv("MYSQL_PWD")
-	mysqlHost := os.Getenv("MYSQL_HOST")
-	mysqlDatabase := os.Getenv("MYSQL_DATABASE")
-	connStr := fmt.Sprintf("%s:%s@%s/%s", mysqlUser, mysqlPwd, mysqlHost, mysqlDatabase)
-	_db, err := sql.Open("mysql", connStr)
+	//mysqlUser := os.Getenv("MYSQL_USER")
+	//mysqlPwd := os.Getenv("MYSQL_PWD")
+	//mysqlHost := os.Getenv("MYSQL_HOST")
+	//mysqlDatabase := os.Getenv("MYSQL_DATABASE")
+	//connStr := fmt.Sprintf("%s:%s@%s/%s", mysqlUser, mysqlPwd, mysqlHost, mysqlDatabase)
+	//_db, err := sql.Open("mysql", connStr)
 
 	//mysqlのコンテナに接続
-	//sqluser := "test_user"
-	//sqlpwd := "password"
-	//sqldatabase := "test_database"
-	//_db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@(localhost:3306)/%s", sqluser, sqlpwd, sqldatabase))
+	sqluser := "test_user"
+	sqlpwd := "password"
+	sqldatabase := "test_database"
+	_db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@(localhost:3306)/%s", sqluser, sqlpwd, sqldatabase))
 
 	if err != nil {
 		log.Fatalf("fail: sql.Open, %v\n", err)
@@ -112,7 +111,7 @@ func handler_table(w http.ResponseWriter, r *http.Request) {
 			}
 			items = append(items, item)
 		}
-		response, err := json.Marshal(items)
+		response, err := json.Marshal(items) //構造体からjsoonに変換
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -157,7 +156,34 @@ func handler_table(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		w.WriteHeader(http.StatusCreated)
+		// Fetch the inserted data from the database
+		rows, err := db.Query("SELECT * FROM maintable WHERE id = ?", ulidStr)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var item SendJson
+		if rows.Next() {
+			err := rows.Scan(&item.Id, &item.Title, &item.Category, &item.Curr, &item.Link, &item.CreateTime, &item.UpdateTime, &item.Numcomment, &item.Summary, &item.Name)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			fmt.Println(item)
+
+			response, err := json.Marshal(item)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			w.WriteHeader(http.StatusCreated)
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(response)
+		}
 	case http.MethodPut:
 		var Recievejson struct {
 			Id       string `json:"id"`
@@ -210,7 +236,35 @@ func handler_table(w http.ResponseWriter, r *http.Request) {
 		currentTime := time.Now()
 		_, err = db.Exec("UPDATE maintable SET updatetime = ? WHERE id = ?", currentTime, Recievejson.Id)
 
-		w.WriteHeader(http.StatusNoContent)
+		// Fetch the updated data from the database
+		fmt.Println(Recievejson.Id)
+		rows, err := db.Query("SELECT * FROM maintable WHERE id = ?", Recievejson.Id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var item SendJson
+		if rows.Next() {
+			fmt.Println("in if rows.Next() {")
+			err := rows.Scan(&item.Id, &item.Title, &item.Category, &item.Curr, &item.Link, &item.CreateTime, &item.UpdateTime, &item.Numcomment, &item.Summary, &item.Name)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			fmt.Println(item)
+
+			response, err := json.Marshal(item)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(response)
+		}
 	case http.MethodDelete:
 		id := r.URL.Query().Get("id")
 		if id == "" {
@@ -358,7 +412,7 @@ func main() {
 	})
 	handlerWithCors := c.Handler(http.DefaultServeMux)
 	log.Println("Listening...")
-	if err := http.ListenAndServe(":8080", handlerWithCors); err != nil {
+	if err := http.ListenAndServe(":8000", handlerWithCors); err != nil {
 		log.Fatal(err)
 	}
 }
